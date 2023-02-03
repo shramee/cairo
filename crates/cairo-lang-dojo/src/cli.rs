@@ -1,15 +1,9 @@
 use std::fs;
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 
 use anyhow::Context;
-use cairo_lang_compiler::diagnostics::check_and_eprint_diagnostics;
 use cairo_lang_dojo::compiler::compile_dojo_project_at_path;
-use cairo_lang_sierra_generator::db::SierraGenGroup;
-use cairo_lang_compiler::project::setup_project;
-use cairo_lang_diagnostics::ToOption;
-use cairo_lang_dojo::db::{DojoRootDatabaseBuilderEx, get_dojo_database};
 use clap::Parser;
-use cairo_lang_compiler::db::RootDatabase;
 
 /// Command line args parser.
 /// Exits with 0/1 if the input is formatted correctly/incorrectly.
