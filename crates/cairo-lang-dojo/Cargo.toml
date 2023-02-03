@@ -19,6 +19,7 @@ cairo-lang-formatter = { path = "../cairo-lang-formatter" }
 cairo-lang-parser = { path = "../cairo-lang-parser" }
 cairo-lang-plugins = { path = "../cairo-lang-plugins" }
 cairo-lang-semantic = { path = "../cairo-lang-semantic" }
+cairo-lang-sierra = { path = "../cairo-lang-sierra" }
 cairo-lang-sierra-generator = { path = "../cairo-lang-sierra-generator" }
 cairo-lang-starknet = { path = "../cairo-lang-starknet" }
 cairo-lang-syntax = { path = "../cairo-lang-syntax" }

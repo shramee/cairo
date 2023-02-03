@@ -393,6 +393,7 @@ dependencies = [
  "cairo-lang-parser",
  "cairo-lang-plugins",
  "cairo-lang-semantic",
+ "cairo-lang-sierra",
  "cairo-lang-sierra-generator",
  "cairo-lang-starknet",
  "cairo-lang-syntax",
