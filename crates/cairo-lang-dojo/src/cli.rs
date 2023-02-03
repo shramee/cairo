@@ -3,6 +3,7 @@ use std::path::{PathBuf, Path};
 
 use anyhow::Context;
 use cairo_lang_compiler::diagnostics::check_and_eprint_diagnostics;
+use cairo_lang_dojo::compiler::compile_dojo_project_at_path;
 use cairo_lang_sierra_generator::db::SierraGenGroup;
 use cairo_lang_compiler::project::setup_project;
 use cairo_lang_diagnostics::ToOption;
@@ -28,26 +29,7 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let path = &PathBuf::from(args.path);
 
-    let mut db_val = {
-        let mut b = RootDatabase::builder();
-        b.with_dev_corelib();
-        b.with_dojo_and_starknet();
-        b.build()
-    };
-
-    let db = &mut db_val;
-
-    let main_crate_ids = setup_project(db, Path::new(&path))?;
-
-    if check_and_eprint_diagnostics(db) {
-        anyhow::bail!("Failed to compile: {}", path.display());
-    }
-
-    let sierra_program = db
-        .get_sierra_program(main_crate_ids)
-        .to_option()
-        .context("Compilation failed without any diagnostics")?;
-
+    let sierra_program = compile_dojo_project_at_path(path)?;
 
     // let contract = compile_path(path, args.replace_ids)?;
     match args.output {
