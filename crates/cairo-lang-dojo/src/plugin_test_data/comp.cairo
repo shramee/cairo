@@ -1,33 +1,6 @@
-//! > Test expansion of the component contract.
-
-//! > test_function_name
-test_expand_contract
-
-//! > cairo_code
-#[component]
-mod PositionComponent {
-    struct Position {
-        x: felt,
-        y: felt
-    }
-
-    #[view]
-    fn is_zero(self: Position) -> bool {
-        match self.x - self.y {
-            0 => bool::True(()),
-            _ => bool::False(()),
-        }
-    }
-
-    #[view]
-    fn is_equal(self: Position, b: Position) -> bool {
-        self.x == b.x & self.y == b.y
-    }
-}
-
-//! > generated_cairo_code
 #[contract]
 mod PositionComponent {
+
     struct Storage {
         world_address: felt,
         state: Map::<felt, Position>,
@@ -56,7 +29,9 @@ mod PositionComponent {
     #[view]
     fn is_zero(entity_id: felt) -> bool {
         let self = state::read(entity_id);
-        match self.x - self.y {
+        let res:u128 = self.x-self.y;
+        let res:felt = u128_to_felt(res);
+        match res {
             0 => bool::True(()),
             _ => bool::False(()),
         }
@@ -68,5 +43,3 @@ mod PositionComponent {
         self.x == b.x & self.y == b.y
     }
 }
-
-//! > expected_diagnostics

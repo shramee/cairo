@@ -9,3 +9,4 @@ pub mod plugin;
 mod component;
 mod system;
 mod query;
+pub mod build;

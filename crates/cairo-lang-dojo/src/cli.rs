@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use cairo_lang_dojo::compiler::compile_dojo_project_at_path;
 use clap::Parser;
+use cairo_lang_dojo::build::build_corelib;
 
 /// Command line args parser.
 /// Exits with 0/1 if the input is formatted correctly/incorrectly.
@@ -22,10 +23,10 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let path = &PathBuf::from(args.path);
+    build_corelib(path.clone());
 
     let sierra_program = compile_dojo_project_at_path(path)?;
 
-    // let contract = compile_path(path, args.replace_ids)?;
     match args.output {
         Some(path) => {
             fs::write(path, format!("{}", sierra_program)).context("Failed to write output.")?
@@ -35,3 +36,4 @@ fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
