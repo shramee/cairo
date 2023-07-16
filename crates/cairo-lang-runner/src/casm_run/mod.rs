@@ -9,12 +9,15 @@ use ark_std::UniformRand;
 use cairo_felt::{felt_str as felt252_str, Felt252};
 use cairo_lang_casm::hints::{CoreHint, DeprecatedHint, Hint, StarknetHint};
 use cairo_lang_casm::instructions::Instruction;
-use cairo_lang_casm::operand::{
-    BinOpOperand, CellRef, DerefOrImmediate, Operation, Register, ResOperand,
-};
+use cairo_lang_casm::operand::{CellRef, DerefOrImmediate, Operation, Register, ResOperand};
 use cairo_lang_sierra::ids::FunctionId;
 use cairo_lang_utils::bigint::BigIntAsHex;
 use cairo_lang_utils::extract_matches;
+use cairo_lang_utils::short_string::as_cairo_short_string;
+use cairo_lang_vm_utils::{
+    execute_core_hint_base, extract_buffer, get_maybe, get_ptr, insert_value_to_cellref,
+    DictManagerExecScope, DictSquashExecScope,
+};
 use cairo_vm::hint_processor::hint_processor_definition::{
     HintProcessor, HintProcessorLogic, HintReference,
 };
@@ -30,26 +33,15 @@ use cairo_vm::vm::errors::memory_errors::MemoryError;
 use cairo_vm::vm::errors::vm_errors::VirtualMachineError;
 use cairo_vm::vm::runners::cairo_runner::{CairoRunner, ResourceTracker, RunResources};
 use cairo_vm::vm::vm_core::VirtualMachine;
-use dict_manager::DictManagerExecScope;
 use num_bigint::BigUint;
 use num_integer::Integer;
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use {ark_secp256k1 as secp256k1, ark_secp256r1 as secp256r1};
 
-use self::dict_manager::DictSquashExecScope;
-use crate::short_string::as_cairo_short_string;
 use crate::{build_hints_dict, Arg, RunResultValue, SierraCasmRunner};
 
 #[cfg(test)]
 mod test;
-
-mod dict_manager;
-
-// TODO(orizi): This def is duplicated.
-/// Returns the Beta value of the Starkware elliptic curve.
-fn get_beta() -> Felt252 {
-    felt252_str!("3141592653589793238462643383279502884197169399375105820974944592307816406665")
-}
 
 #[derive(MontConfig)]
 #[modulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
@@ -104,6 +96,45 @@ pub fn cell_ref_to_relocatable(cell_ref: &CellRef, vm: &VirtualMachine) -> Reloc
         Register::FP => vm.get_fp(),
     };
     (base + (cell_ref.offset as i32)).unwrap()
+}
+
+fn get_beta() -> Felt252 {
+    felt252_str!("3141592653589793238462643383279502884197169399375105820974944592307816406665")
+}
+
+impl<'a> CairoHintProcessor<'a> {
+    pub fn new<'b, Instructions: Iterator<Item = &'b Instruction> + Clone>(
+        runner: Option<&'a SierraCasmRunner>,
+        instructions: Instructions,
+        starknet_state: StarknetState,
+    ) -> Self {
+        let mut hints_dict: HashMap<usize, Vec<HintParams>> = HashMap::new();
+        let mut string_to_hint: HashMap<String, Hint> = HashMap::new();
+
+        let mut hint_offset = 0;
+
+        for instruction in instructions {
+            if !instruction.hints.is_empty() {
+                // Register hint with string for the hint processor.
+                for hint in instruction.hints.iter() {
+                    string_to_hint.insert(hint.representing_string(), hint.clone());
+                }
+                // Add hint, associated with the instruction offset.
+                hints_dict.insert(
+                    hint_offset,
+                    instruction.hints.iter().map(hint_to_hint_params).collect(),
+                );
+            }
+            hint_offset += instruction.body.op_size();
+        }
+        CairoHintProcessor {
+            runner,
+            hints_dict,
+            string_to_hint,
+            starknet_state,
+            run_resources: RunResources::default(),
+        }
+    }
 }
 
 /// Inserts a value into the vm memory cell represented by the cellref.
@@ -458,6 +489,15 @@ impl VMWrapper for VirtualMachine {
     fn vm(&mut self) -> &mut VirtualMachine {
         self
     }
+}
+
+/// Extracts a parameter assumed to be a buffer, and converts it into a relocatable.
+fn extract_relocatable(
+    vm: &VirtualMachine,
+    buffer: &ResOperand,
+) -> Result<Relocatable, VirtualMachineError> {
+    let (base, offset) = extract_buffer(buffer);
+    get_ptr(vm, base, &offset)
 }
 
 /// Creates a new segment in the VM memory and writes data to it, returing the start and end
@@ -1435,21 +1475,6 @@ fn get_secp256r1_exec_scope(
 }
 
 // ---
-
-pub fn execute_core_hint_base(
-    vm: &mut VirtualMachine,
-    exec_scopes: &mut ExecutionScopes,
-    core_hint_base: &cairo_lang_casm::hints::CoreHintBase,
-) -> Result<(), HintError> {
-    match core_hint_base {
-        cairo_lang_casm::hints::CoreHintBase::Core(core_hint) => {
-            execute_core_hint(vm, exec_scopes, core_hint)
-        }
-        cairo_lang_casm::hints::CoreHintBase::Deprecated(deprecated_hint) => {
-            execute_deprecated_hint(vm, exec_scopes, deprecated_hint)
-        }
-    }
-}
 
 pub fn execute_deprecated_hint(
     vm: &mut VirtualMachine,

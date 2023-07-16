@@ -7,6 +7,8 @@ license-file.workspace = true
 description = "Basic cairo runner."
 
 [dependencies]
+
+
 anyhow.workspace = true
 ark-ff.workspace = true
 ark-secp256k1.workspace = true
@@ -27,15 +29,20 @@ cairo-lang-sierra-generator = { path = "../cairo-lang-sierra-generator", version
 cairo-lang-sierra-to-casm = { path = "../cairo-lang-sierra-to-casm", version = "2.1.0" }
 cairo-lang-sierra-type-size = { path = "../cairo-lang-sierra-type-size", version = "2.1.0" }
 cairo-lang-starknet = { path = "../cairo-lang-starknet", version = "2.1.0" }
-cairo-lang-utils = { path = "../cairo-lang-utils", version = "2.1.0" }
+cairo-lang-utils = { path = "../cairo-lang-utils", version = "2.1.0", features = [
+    "std",
+] }
+cairo-lang-vm-utils = { path = "../cairo-lang-vm-utils", features = [
+    "std",
+    "execute_core_hints",
+] }
 cairo-vm.workspace = true
 itertools.workspace = true
 keccak.workspace = true
 num-bigint.workspace = true
 num-integer.workspace = true
 num-traits.workspace = true
-salsa.workspace = true
-thiserror.workspace = true
+thiserror-no-std.workspace = true
 
 [dev-dependencies]
 pretty_assertions.workspace = true
