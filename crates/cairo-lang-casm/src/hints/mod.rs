@@ -297,7 +297,7 @@ impl<'a> Display for ResOperandAsIntegerFormatter<'a> {
 
 struct ResOperandAsAddressFormatter<'a>(&'a ResOperand);
 impl<'a> Display for ResOperandAsAddressFormatter<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self.0 {
             ResOperand::Deref(d) => write!(f, "memory{d}"),
             ResOperand::DoubleDeref(d, i) => write!(f, "memory[memory{d} + {i}]"),

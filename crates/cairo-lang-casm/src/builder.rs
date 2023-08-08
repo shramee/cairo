@@ -8,7 +8,7 @@ mod no_std_imports {
     pub use alloc::vec::Vec;
 
     pub use hashbrown::hash_map::Entry;
-    pub use hashbrown::HashMap;
+    pub use hashbrown::{HashMap, HashSet};
 }
 
 #[cfg(feature = "std")]
@@ -18,8 +18,6 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use cairo_lang_utils::casts::IntoOrPanic;
 use cairo_lang_utils::extract_matches;
-#[cfg(not(feature = "std"))]
-use hashbrown::{hash_map::Entry, HashMap};
 use num_bigint::BigInt;
 use num_traits::One;
 
