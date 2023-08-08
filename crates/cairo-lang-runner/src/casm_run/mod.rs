@@ -12,7 +12,6 @@ use cairo_lang_casm::instructions::Instruction;
 use cairo_lang_casm::operand::{CellRef, DerefOrImmediate, Operation, Register, ResOperand};
 use cairo_lang_sierra::ids::FunctionId;
 use cairo_lang_utils::bigint::BigIntAsHex;
-use cairo_lang_utils::extract_matches;
 use cairo_lang_utils::short_string::as_cairo_short_string;
 use cairo_lang_vm_utils::{
     execute_core_hint_base, extract_buffer, get_maybe, get_ptr, insert_value_to_cellref,
@@ -100,41 +99,6 @@ pub fn cell_ref_to_relocatable(cell_ref: &CellRef, vm: &VirtualMachine) -> Reloc
 
 fn get_beta() -> Felt252 {
     felt252_str!("3141592653589793238462643383279502884197169399375105820974944592307816406665")
-}
-
-impl<'a> CairoHintProcessor<'a> {
-    pub fn new<'b, Instructions: Iterator<Item = &'b Instruction> + Clone>(
-        runner: Option<&'a SierraCasmRunner>,
-        instructions: Instructions,
-        starknet_state: StarknetState,
-    ) -> Self {
-        let mut hints_dict: HashMap<usize, Vec<HintParams>> = HashMap::new();
-        let mut string_to_hint: HashMap<String, Hint> = HashMap::new();
-
-        let mut hint_offset = 0;
-
-        for instruction in instructions {
-            if !instruction.hints.is_empty() {
-                // Register hint with string for the hint processor.
-                for hint in instruction.hints.iter() {
-                    string_to_hint.insert(hint.representing_string(), hint.clone());
-                }
-                // Add hint, associated with the instruction offset.
-                hints_dict.insert(
-                    hint_offset,
-                    instruction.hints.iter().map(hint_to_hint_params).collect(),
-                );
-            }
-            hint_offset += instruction.body.op_size();
-        }
-        CairoHintProcessor {
-            runner,
-            hints_dict,
-            string_to_hint,
-            starknet_state,
-            run_resources: RunResources::default(),
-        }
-    }
 }
 
 /// Inserts a value into the vm memory cell represented by the cellref.
@@ -239,32 +203,6 @@ fn get_cell_val(vm: &VirtualMachine, cell: &CellRef) -> Result<Felt252, VirtualM
     Ok(vm.get_integer(cell_ref_to_relocatable(cell, vm))?.as_ref().clone())
 }
 
-/// Fetch the `MaybeRelocatable` value from an address.
-fn get_maybe_from_addr(
-    vm: &VirtualMachine,
-    addr: Relocatable,
-) -> Result<MaybeRelocatable, VirtualMachineError> {
-    vm.get_maybe(&addr)
-        .ok_or_else(|| VirtualMachineError::InvalidMemoryValueTemporaryAddress(Box::new(addr)))
-}
-
-/// Fetches the maybe relocatable value of a cell from the vm.
-fn get_cell_maybe(
-    vm: &VirtualMachine,
-    cell: &CellRef,
-) -> Result<MaybeRelocatable, VirtualMachineError> {
-    get_maybe_from_addr(vm, cell_ref_to_relocatable(cell, vm))
-}
-
-/// Fetches the value of a cell plus an offset from the vm, useful for pointers.
-pub fn get_ptr(
-    vm: &VirtualMachine,
-    cell: &CellRef,
-    offset: &Felt252,
-) -> Result<Relocatable, VirtualMachineError> {
-    Ok((vm.get_relocatable(cell_ref_to_relocatable(cell, vm))? + offset)?)
-}
-
 /// Fetches the value of a pointer described by the value at `cell` plus an offset from the vm.
 fn get_double_deref_val(
     vm: &VirtualMachine,
@@ -272,16 +210,6 @@ fn get_double_deref_val(
     offset: &Felt252,
 ) -> Result<Felt252, VirtualMachineError> {
     Ok(vm.get_integer(get_ptr(vm, cell, offset)?)?.as_ref().clone())
-}
-
-/// Fetches the maybe relocatable value of a pointer described by the value at `cell` plus an offset
-/// from the vm.
-fn get_double_deref_maybe(
-    vm: &VirtualMachine,
-    cell: &CellRef,
-    offset: &Felt252,
-) -> Result<MaybeRelocatable, VirtualMachineError> {
-    get_maybe_from_addr(vm, get_ptr(vm, cell, offset)?)
 }
 
 /// Extracts a parameter assumed to be a buffer, and converts it into a relocatable.
@@ -382,36 +310,6 @@ macro_rules! deduct_gas {
     };
 }
 
-/// Fetches the maybe relocatable value of `res_operand` from the vm.
-fn get_maybe(
-    vm: &VirtualMachine,
-    res_operand: &ResOperand,
-) -> Result<MaybeRelocatable, VirtualMachineError> {
-    match res_operand {
-        ResOperand::Deref(cell) => get_cell_maybe(vm, cell),
-        ResOperand::DoubleDeref(cell, offset) => {
-            get_double_deref_maybe(vm, cell, &(*offset).into())
-        }
-        ResOperand::Immediate(x) => Ok(Felt252::from(x.value.clone()).into()),
-        ResOperand::BinOp(op) => {
-            let a = get_cell_maybe(vm, &op.a)?;
-            let b = match &op.b {
-                DerefOrImmediate::Deref(cell) => get_cell_val(vm, cell)?,
-                DerefOrImmediate::Immediate(x) => Felt252::from(x.value.clone()),
-            };
-            Ok(match op.op {
-                Operation::Add => a.add_int(&b)?,
-                Operation::Mul => match a {
-                    MaybeRelocatable::RelocatableValue(_) => {
-                        panic!("mul not implemented for relocatable values")
-                    }
-                    MaybeRelocatable::Int(a) => (a * b).into(),
-                },
-            })
-        }
-    }
-}
-
 impl HintProcessorLogic for CairoHintProcessor<'_> {
     /// Trait function to execute a given hint in the hint processor.
     fn execute_hint(
@@ -489,15 +387,6 @@ impl VMWrapper for VirtualMachine {
     fn vm(&mut self) -> &mut VirtualMachine {
         self
     }
-}
-
-/// Extracts a parameter assumed to be a buffer, and converts it into a relocatable.
-fn extract_relocatable(
-    vm: &VirtualMachine,
-    buffer: &ResOperand,
-) -> Result<Relocatable, VirtualMachineError> {
-    let (base, offset) = extract_buffer(buffer);
-    get_ptr(vm, base, &offset)
 }
 
 /// Creates a new segment in the VM memory and writes data to it, returing the start and end
@@ -1955,18 +1844,6 @@ pub fn vm_get_range(
         calldata_start_ptr.offset += 1;
     }
     Ok(values)
-}
-
-/// Extracts a parameter assumed to be a buffer.
-pub fn extract_buffer(buffer: &ResOperand) -> (&CellRef, Felt252) {
-    let (cell, base_offset) = match buffer {
-        ResOperand::Deref(cell) => (cell, 0.into()),
-        ResOperand::BinOp(BinOpOperand { op: Operation::Add, a, b }) => {
-            (a, extract_matches!(b, DerefOrImmediate::Immediate).clone().value.into())
-        }
-        _ => panic!("Illegal argument for a buffer."),
-    };
-    (cell, base_offset)
 }
 
 /// Provides context for the `additional_initialization` callback function of [run_function].

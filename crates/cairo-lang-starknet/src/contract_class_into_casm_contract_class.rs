@@ -3,7 +3,7 @@
 mod contract_class_into_casm_contract_class_test;
 
 use cairo_felt::Felt252;
-use cairo_lang_casm::hints::{Hint, PythonicHint};
+use cairo_lang_casm::hints::PythonicHint;
 use cairo_lang_casm_contract_class::{
     CasmContractClass, CasmContractEntryPoint, CasmContractEntryPoints,
 };
