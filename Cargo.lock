@@ -310,8 +310,8 @@ checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
 
 [[package]]
 name = "bincode"
-version = "2.0.0-rc.2"
-source = "git+https://github.com/bincode-org/bincode.git?tag=v2.0.0-rc.2#6c219e9214bda2bdce1327db6ed7f66d2fa4bf02"
+version = "2.0.0-rc.3"
+source = "git+https://github.com/bincode-org/bincode.git?tag=v2.0.0-rc.3#aada4bb4cb457677a4b8e47572ae7ca8dd44927c"
 dependencies = [
  "serde",
 ]
@@ -405,8 +405,8 @@ dependencies = [
 
 [[package]]
 name = "cairo-felt"
-version = "0.8.1"
-source = "git+https://github.com/keep-starknet-strange/cairo-rs?branch=no_std-support-with-cairo-1-rebase#ca5d0a445232a420ce02e7c697fbc6ab9b4416ee"
+version = "0.8.5"
+source = "git+https://github.com/apoorvsadana/cairo-rs?branch=no_std-support-08-aug-23#b35163ea7aee96b1853ee041cfda8e3337f9de10"
 dependencies = [
  "lazy_static",
  "num-bigint",
@@ -1095,7 +1095,7 @@ dependencies = [
 [[package]]
 name = "cairo-take_until_unbalanced"
 version = "0.29.0"
-source = "git+https://github.com/keep-starknet-strange/cairo-rs?branch=no_std-support-with-cairo-1-rebase#ca5d0a445232a420ce02e7c697fbc6ab9b4416ee"
+source = "git+https://github.com/apoorvsadana/cairo-rs?branch=no_std-support-08-aug-23#b35163ea7aee96b1853ee041cfda8e3337f9de10"
 dependencies = [
  "nom",
 ]
@@ -1112,8 +1112,8 @@ dependencies = [
 
 [[package]]
 name = "cairo-vm"
-version = "0.8.1"
-source = "git+https://github.com/keep-starknet-strange/cairo-rs?branch=no_std-support-with-cairo-1-rebase#ca5d0a445232a420ce02e7c697fbc6ab9b4416ee"
+version = "0.8.5"
+source = "git+https://github.com/apoorvsadana/cairo-rs?branch=no_std-support-08-aug-23#b35163ea7aee96b1853ee041cfda8e3337f9de10"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1121,7 +1121,7 @@ dependencies = [
  "cairo-felt",
  "cairo-take_until_unbalanced",
  "generic-array",
- "hashbrown 0.13.2",
+ "hashbrown 0.14.0",
  "hex",
  "keccak",
  "lazy_static",
@@ -1131,9 +1131,7 @@ dependencies = [
  "num-prime",
  "num-traits 0.2.16",
  "rand",
- "rand_core",
  "serde",
- "serde_bytes",
  "serde_json",
  "sha2",
  "sha3",
@@ -1682,7 +1680,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
 dependencies = [
  "ahash 0.8.3",
- "serde",
 ]
 
 [[package]]
@@ -2729,15 +2726,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32ac8da02677876d532745a130fc9d8e6edfa81a269b107c5b00829b91d8eb3c"
 dependencies = [
  "serde_derive",
-]
-
-[[package]]
-name = "serde_bytes"
-version = "0.11.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab33ec92f677585af6d88c65593ae2375adde54efdbf16d597f2cbc7a6d368ff"
-dependencies = [
- "serde",
 ]
 
 [[package]]
