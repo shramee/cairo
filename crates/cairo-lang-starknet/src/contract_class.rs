@@ -16,7 +16,7 @@ use cairo_lang_utils::bigint::{deserialize_big_uint, serialize_big_uint, BigUint
 use itertools::{chain, Itertools};
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
+use thiserror_no_std::Error;
 
 use crate::abi::{AbiBuilder, Contract};
 use crate::allowed_libfuncs::{
@@ -216,15 +216,18 @@ pub fn extract_semantic_entrypoints(
     contract: &ContractDeclaration,
 ) -> core::result::Result<SemanticEntryPoints, anyhow::Error> {
     let external: Vec<_> = get_module_functions(db.upcast(), contract, EXTERNAL_MODULE)?
-        .into_iter()
+        .iter()
+        .copied()
         .flat_map(|f| ConcreteFunctionWithBodyId::from_no_generics_free(db.upcast(), f))
         .collect();
     let l1_handler: Vec<_> = get_module_functions(db.upcast(), contract, L1_HANDLER_MODULE)?
-        .into_iter()
+        .iter()
+        .copied()
         .flat_map(|f| ConcreteFunctionWithBodyId::from_no_generics_free(db.upcast(), f))
         .collect();
     let constructor: Vec<_> = get_module_functions(db.upcast(), contract, CONSTRUCTOR_MODULE)?
-        .into_iter()
+        .iter()
+        .copied()
         .flat_map(|f| ConcreteFunctionWithBodyId::from_no_generics_free(db.upcast(), f))
         .collect();
     if constructor.len() > 1 {

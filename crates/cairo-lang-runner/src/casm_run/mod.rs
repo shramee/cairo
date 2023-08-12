@@ -9,12 +9,14 @@ use ark_std::UniformRand;
 use cairo_felt::{felt_str as felt252_str, Felt252};
 use cairo_lang_casm::hints::{CoreHint, DeprecatedHint, Hint, StarknetHint};
 use cairo_lang_casm::instructions::Instruction;
-use cairo_lang_casm::operand::{
-    BinOpOperand, CellRef, DerefOrImmediate, Operation, Register, ResOperand,
-};
+use cairo_lang_casm::operand::{CellRef, DerefOrImmediate, Operation, Register, ResOperand};
 use cairo_lang_sierra::ids::FunctionId;
 use cairo_lang_utils::bigint::BigIntAsHex;
-use cairo_lang_utils::extract_matches;
+use cairo_lang_utils::short_string::as_cairo_short_string;
+use cairo_lang_vm_utils::{
+    execute_core_hint_base, extract_buffer, get_maybe, get_ptr, insert_value_to_cellref,
+    DictManagerExecScope, DictSquashExecScope,
+};
 use cairo_vm::hint_processor::hint_processor_definition::{
     HintProcessor, HintProcessorLogic, HintReference,
 };
@@ -30,26 +32,15 @@ use cairo_vm::vm::errors::memory_errors::MemoryError;
 use cairo_vm::vm::errors::vm_errors::VirtualMachineError;
 use cairo_vm::vm::runners::cairo_runner::{CairoRunner, ResourceTracker, RunResources};
 use cairo_vm::vm::vm_core::VirtualMachine;
-use dict_manager::DictManagerExecScope;
 use num_bigint::BigUint;
 use num_integer::Integer;
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use {ark_secp256k1 as secp256k1, ark_secp256r1 as secp256r1};
 
-use self::dict_manager::DictSquashExecScope;
-use crate::short_string::as_cairo_short_string;
 use crate::{build_hints_dict, Arg, RunResultValue, SierraCasmRunner};
 
 #[cfg(test)]
 mod test;
-
-mod dict_manager;
-
-// TODO(orizi): This def is duplicated.
-/// Returns the Beta value of the Starkware elliptic curve.
-fn get_beta() -> Felt252 {
-    felt252_str!("3141592653589793238462643383279502884197169399375105820974944592307816406665")
-}
 
 #[derive(MontConfig)]
 #[modulus = "3618502788666131213697322783095070105623107215331596699973092056135872020481"]
@@ -106,6 +97,10 @@ pub fn cell_ref_to_relocatable(cell_ref: &CellRef, vm: &VirtualMachine) -> Reloc
     (base + (cell_ref.offset as i32)).unwrap()
 }
 
+fn get_beta() -> Felt252 {
+    felt252_str!("3141592653589793238462643383279502884197169399375105820974944592307816406665")
+}
+
 /// Inserts a value into the vm memory cell represented by the cellref.
 #[macro_export]
 macro_rules! insert_value_to_cellref {
@@ -117,6 +112,9 @@ macro_rules! insert_value_to_cellref {
 // Log type signature
 type Log = (Vec<Felt252>, Vec<Felt252>);
 
+// L2 to L1 message type signature
+type L2ToL1Message = (Felt252, Vec<Felt252>);
+
 /// Execution scope for starknet related data.
 /// All values will be 0 and by default if not setup by the test.
 #[derive(Clone, Default)]
@@ -127,7 +125,7 @@ pub struct StarknetState {
     #[allow(dead_code)]
     deployed_contracts: HashMap<Felt252, Felt252>,
     /// A mapping from contract address to logs.
-    logs: HashMap<Felt252, VecDeque<Log>>,
+    logs: HashMap<Felt252, ContractLogs>,
     /// The simulated execution info.
     exec_info: ExecutionInfo,
     next_id: Felt252,
@@ -137,6 +135,33 @@ impl StarknetState {
         self.next_id += Felt252::from(1);
         self.next_id.clone()
     }
+
+    /// Replaces the addresses in the context.
+    pub fn open_caller_context(&mut self, new_contract_address: Felt252) -> (Felt252, Felt252) {
+        let old_contract_address =
+            std::mem::replace(&mut self.exec_info.contract_address, new_contract_address.clone());
+        let old_caller_address =
+            std::mem::replace(&mut self.exec_info.caller_address, old_contract_address.clone());
+        (old_contract_address, old_caller_address)
+    }
+
+    /// Restores the addresses in the context.
+    pub fn close_caller_context(
+        &mut self,
+        (old_contract_address, old_caller_address): (Felt252, Felt252),
+    ) {
+        self.exec_info.contract_address = old_contract_address;
+        self.exec_info.caller_address = old_caller_address;
+    }
+}
+
+/// Object storing logs for a contract.
+#[derive(Clone, Default)]
+struct ContractLogs {
+    /// Events.
+    events: VecDeque<Log>,
+    /// Messages sent to L1.
+    l2_to_l1_messages: VecDeque<L2ToL1Message>,
 }
 
 /// Copy of the cairo `ExecutionInfo` struct.
@@ -178,32 +203,6 @@ fn get_cell_val(vm: &VirtualMachine, cell: &CellRef) -> Result<Felt252, VirtualM
     Ok(vm.get_integer(cell_ref_to_relocatable(cell, vm))?.as_ref().clone())
 }
 
-/// Fetch the `MaybeRelocatable` value from an address.
-fn get_maybe_from_addr(
-    vm: &VirtualMachine,
-    addr: Relocatable,
-) -> Result<MaybeRelocatable, VirtualMachineError> {
-    vm.get_maybe(&addr)
-        .ok_or_else(|| VirtualMachineError::InvalidMemoryValueTemporaryAddress(Box::new(addr)))
-}
-
-/// Fetches the maybe relocatable value of a cell from the vm.
-fn get_cell_maybe(
-    vm: &VirtualMachine,
-    cell: &CellRef,
-) -> Result<MaybeRelocatable, VirtualMachineError> {
-    get_maybe_from_addr(vm, cell_ref_to_relocatable(cell, vm))
-}
-
-/// Fetches the value of a cell plus an offset from the vm, useful for pointers.
-pub fn get_ptr(
-    vm: &VirtualMachine,
-    cell: &CellRef,
-    offset: &Felt252,
-) -> Result<Relocatable, VirtualMachineError> {
-    Ok((vm.get_relocatable(cell_ref_to_relocatable(cell, vm))? + offset)?)
-}
-
 /// Fetches the value of a pointer described by the value at `cell` plus an offset from the vm.
 fn get_double_deref_val(
     vm: &VirtualMachine,
@@ -211,16 +210,6 @@ fn get_double_deref_val(
     offset: &Felt252,
 ) -> Result<Felt252, VirtualMachineError> {
     Ok(vm.get_integer(get_ptr(vm, cell, offset)?)?.as_ref().clone())
-}
-
-/// Fetches the maybe relocatable value of a pointer described by the value at `cell` plus an offset
-/// from the vm.
-fn get_double_deref_maybe(
-    vm: &VirtualMachine,
-    cell: &CellRef,
-    offset: &Felt252,
-) -> Result<MaybeRelocatable, VirtualMachineError> {
-    get_maybe_from_addr(vm, get_ptr(vm, cell, offset)?)
 }
 
 /// Extracts a parameter assumed to be a buffer, and converts it into a relocatable.
@@ -319,36 +308,6 @@ macro_rules! deduct_gas {
         }
         *$gas -= gas_costs::$amount;
     };
-}
-
-/// Fetches the maybe relocatable value of `res_operand` from the vm.
-fn get_maybe(
-    vm: &VirtualMachine,
-    res_operand: &ResOperand,
-) -> Result<MaybeRelocatable, VirtualMachineError> {
-    match res_operand {
-        ResOperand::Deref(cell) => get_cell_maybe(vm, cell),
-        ResOperand::DoubleDeref(cell, offset) => {
-            get_double_deref_maybe(vm, cell, &(*offset).into())
-        }
-        ResOperand::Immediate(x) => Ok(Felt252::from(x.value.clone()).into()),
-        ResOperand::BinOp(op) => {
-            let a = get_cell_maybe(vm, &op.a)?;
-            let b = match &op.b {
-                DerefOrImmediate::Deref(cell) => get_cell_val(vm, cell)?,
-                DerefOrImmediate::Immediate(x) => Felt252::from(x.value.clone()),
-            };
-            Ok(match op.op {
-                Operation::Add => a.add_int(&b)?,
-                Operation::Mul => match a {
-                    MaybeRelocatable::RelocatableValue(_) => {
-                        panic!("mul not implemented for relocatable values")
-                    }
-                    MaybeRelocatable::Int(a) => (a * b).into(),
-                },
-            })
-        }
-    }
 }
 
 impl HintProcessorLogic for CairoHintProcessor<'_> {
@@ -624,10 +583,11 @@ impl<'a> CairoHintProcessor<'a> {
                 self.emit_event(gas_counter, system_buffer.next_arr()?, system_buffer.next_arr()?)
             }),
             "SendMessageToL1" => execute_handle_helper(&mut |system_buffer, gas_counter| {
-                let _to_address = system_buffer.next_felt252()?;
-                let _payload = system_buffer.next_arr()?;
-                deduct_gas!(gas_counter, SEND_MESSAGE_TO_L1);
-                Ok(SyscallResult::Success(vec![]))
+                self.send_message_to_l1(
+                    gas_counter,
+                    system_buffer.next_felt252()?.into_owned(),
+                    system_buffer.next_arr()?,
+                )
             }),
             "Keccak" => execute_handle_helper(&mut |system_buffer, gas_counter| {
                 keccak(gas_counter, system_buffer.next_arr()?)
@@ -834,7 +794,25 @@ impl<'a> CairoHintProcessor<'a> {
     ) -> Result<SyscallResult, HintError> {
         deduct_gas!(gas_counter, EMIT_EVENT);
         let contract = self.starknet_state.exec_info.contract_address.clone();
-        self.starknet_state.logs.entry(contract).or_default().push_back((keys, data));
+        self.starknet_state.logs.entry(contract).or_default().events.push_back((keys, data));
+        Ok(SyscallResult::Success(vec![]))
+    }
+
+    /// Executes the `send_message_to_l1_event_syscall` syscall.
+    fn send_message_to_l1(
+        &mut self,
+        gas_counter: &mut usize,
+        to_address: Felt252,
+        payload: Vec<Felt252>,
+    ) -> Result<SyscallResult, HintError> {
+        deduct_gas!(gas_counter, SEND_MESSAGE_TO_L1);
+        let contract = self.starknet_state.exec_info.contract_address.clone();
+        self.starknet_state
+            .logs
+            .entry(contract)
+            .or_default()
+            .l2_to_l1_messages
+            .push_back((to_address, payload));
         Ok(SyscallResult::Success(vec![]))
     }
 
@@ -861,17 +839,10 @@ impl<'a> CairoHintProcessor<'a> {
 
         // Call constructor if it exists.
         let (res_data_start, res_data_end) = if let Some(constructor) = &contract_info.constructor {
-            // Replace the contract address in the context.
-            let old_contract_address = std::mem::replace(
-                &mut self.starknet_state.exec_info.contract_address,
-                deployed_contract_address.clone(),
-            );
-
-            // Run the constructor.
+            let old_addrs =
+                self.starknet_state.open_caller_context(deployed_contract_address.clone());
             let res = self.call_entry_point(gas_counter, runner, constructor, calldata, vm);
-
-            // Restore the contract address in the context.
-            self.starknet_state.exec_info.contract_address = old_contract_address;
+            self.starknet_state.close_caller_context(old_addrs);
             match res {
                 Ok(value) => value,
                 Err(mut revert_reason) => {
@@ -923,21 +894,9 @@ impl<'a> CairoHintProcessor<'a> {
             fail_syscall!(b"ENTRYPOINT_NOT_FOUND");
         };
 
-        // Replace the contract address in the context.
-        let old_contract_address = std::mem::replace(
-            &mut self.starknet_state.exec_info.contract_address,
-            contract_address.clone(),
-        );
-        let old_caller_address = std::mem::replace(
-            &mut self.starknet_state.exec_info.caller_address,
-            old_contract_address.clone(),
-        );
-
+        let old_addrs = self.starknet_state.open_caller_context(contract_address.clone());
         let res = self.call_entry_point(gas_counter, runner, entry_point, calldata, vm);
-
-        // Restore the contract address in the context.
-        self.starknet_state.exec_info.caller_address = old_caller_address;
-        self.starknet_state.exec_info.contract_address = old_contract_address;
+        self.starknet_state.close_caller_context(old_addrs);
 
         match res {
             Ok((res_data_start, res_data_end)) => {
@@ -1101,12 +1060,22 @@ impl<'a> CairoHintProcessor<'a> {
             "pop_log" => {
                 let contract_logs = self.starknet_state.logs.get_mut(&as_single_input(inputs)?);
                 if let Some((keys, data)) =
-                    contract_logs.and_then(|contract_logs| contract_logs.pop_front())
+                    contract_logs.and_then(|contract_logs| contract_logs.events.pop_front())
                 {
                     res_segment.write(keys.len())?;
                     res_segment.write_data(keys.iter())?;
                     res_segment.write(data.len())?;
                     res_segment.write_data(data.iter())?;
+                }
+            }
+            "pop_l2_to_l1_message" => {
+                let contract_logs = self.starknet_state.logs.get_mut(&as_single_input(inputs)?);
+                if let Some((to_address, payload)) = contract_logs
+                    .and_then(|contract_logs| contract_logs.l2_to_l1_messages.pop_front())
+                {
+                    res_segment.write(to_address)?;
+                    res_segment.write(payload.len())?;
+                    res_segment.write_data(payload.iter())?;
                 }
             }
             _ => Err(HintError::CustomHint(Box::from(format!(
@@ -1218,9 +1187,10 @@ fn secp256k1_get_point_from_x(
     }
     let x = x.into();
     let maybe_p = secp256k1::Affine::get_ys_from_x_unchecked(x)
-        .map(|(smaller, greater)|
+        .map(
+            |(smaller, greater)|
             // Return the correct y coordinate based on the parity.
-            if smaller.0.is_odd() == y_parity { smaller } else { greater }
+            if smaller.into_bigint().is_odd() == y_parity { smaller } else { greater },
         )
         .map(|y| secp256k1::Affine::new_unchecked(x, y))
         .filter(|p| p.is_in_correct_subgroup_assuming_on_curve());
@@ -1344,9 +1314,11 @@ fn secp256r1_get_point_from_x(
     }
     let x = x.into();
     let maybe_p = secp256r1::Affine::get_ys_from_x_unchecked(x)
-        .map(|(smaller, greater)|
+        .map(
+            |(smaller, greater)|
             // Return the correct y coordinate based on the parity.
-            if smaller.0.is_odd() == y_parity { smaller } else { greater })
+            if smaller.into_bigint().is_odd() == y_parity { smaller } else { greater },
+        )
         .map(|y| secp256r1::Affine::new_unchecked(x, y))
         .filter(|p| p.is_in_correct_subgroup_assuming_on_curve());
     let Some(p) = maybe_p else {
@@ -1392,21 +1364,6 @@ fn get_secp256r1_exec_scope(
 }
 
 // ---
-
-pub fn execute_core_hint_base(
-    vm: &mut VirtualMachine,
-    exec_scopes: &mut ExecutionScopes,
-    core_hint_base: &cairo_lang_casm::hints::CoreHintBase,
-) -> Result<(), HintError> {
-    match core_hint_base {
-        cairo_lang_casm::hints::CoreHintBase::Core(core_hint) => {
-            execute_core_hint(vm, exec_scopes, core_hint)
-        }
-        cairo_lang_casm::hints::CoreHintBase::Deprecated(deprecated_hint) => {
-            execute_deprecated_hint(vm, exec_scopes, deprecated_hint)
-        }
-    }
-}
 
 pub fn execute_deprecated_hint(
     vm: &mut VirtualMachine,
@@ -1887,18 +1844,6 @@ pub fn vm_get_range(
         calldata_start_ptr.offset += 1;
     }
     Ok(values)
-}
-
-/// Extracts a parameter assumed to be a buffer.
-pub fn extract_buffer(buffer: &ResOperand) -> (&CellRef, Felt252) {
-    let (cell, base_offset) = match buffer {
-        ResOperand::Deref(cell) => (cell, 0.into()),
-        ResOperand::BinOp(BinOpOperand { op: Operation::Add, a, b }) => {
-            (a, extract_matches!(b, DerefOrImmediate::Immediate).clone().value.into())
-        }
-        _ => panic!("Illegal argument for a buffer."),
-    };
-    (cell, base_offset)
 }
 
 /// Provides context for the `additional_initialization` callback function of [run_function].

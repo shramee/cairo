@@ -1,5 +1,20 @@
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+#[cfg(not(feature = "std"))]
+use no_std_imports::*;
+#[cfg(not(feature = "std"))]
+mod no_std_imports {
+    pub use alloc::borrow::ToOwned;
+    pub use alloc::string::String;
+    pub use alloc::vec;
+    pub use alloc::vec::Vec;
+
+    pub use hashbrown::hash_map::Entry;
+    pub use hashbrown::{HashMap, HashSet};
+}
+
+#[cfg(feature = "std")]
+pub use std::borrow::ToOwned;
+#[cfg(feature = "std")]
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use cairo_lang_utils::casts::IntoOrPanic;
 use cairo_lang_utils::extract_matches;
@@ -65,13 +80,19 @@ impl State {
 
     /// Intersect the states of branches leading to the same label, validating that the states can
     /// intersect.
-    fn intersect(&mut self, other: &Self) {
+    fn intersect(&mut self, other: &Self, read_only: bool) {
         assert_eq!(self.ap_change, other.ap_change, "Merged branches not aligned on AP change.");
         assert_eq!(
             self.allocated, other.allocated,
             "Merged branches not aligned on number of allocations."
         );
-        self.steps = self.steps.max(other.steps);
+        if read_only {
+            assert!(self.steps >= other.steps, "Finalized branch cannot be updated.");
+        } else {
+            self.steps = self.steps.max(other.steps);
+        }
+        // Allowing removal of variables as valid code won't be producable in that case anyway, and
+        // otherwise merging branches becomes very difficult.
         self.vars.retain(|var, value| {
             other
                 .vars
@@ -106,6 +127,8 @@ pub struct CasmBuildResult<const BRANCH_COUNT: usize> {
 pub struct CasmBuilder {
     /// The state at a point of jumping into a label, per label.
     label_state: HashMap<String, State>,
+    /// The set of labels that were already read, so cannot be updated.
+    read_labels: HashSet<String>,
     /// The state at the last added statement.
     main_state: State,
     /// The added statements.
@@ -296,7 +319,7 @@ impl CasmBuilder {
             },
         };
         let instruction =
-            self.get_instruction(InstructionBody::AssertEq(AssertEqInstruction { a, b }), true);
+            self.next_instruction(InstructionBody::AssertEq(AssertEqInstruction { a, b }), true);
         self.statements.push(Statement::Final(instruction));
     }
 
@@ -350,7 +373,7 @@ impl CasmBuilder {
 
     /// Increases AP by `size`.
     pub fn add_ap(&mut self, size: usize) {
-        let instruction = self.get_instruction(
+        let instruction = self.next_instruction(
             InstructionBody::AddAp(AddApInstruction { operand: BigInt::from(size).into() }),
             false,
         );
@@ -386,7 +409,8 @@ impl CasmBuilder {
     fn set_or_test_label_state(&mut self, label: String, state: State) {
         match self.label_state.entry(label) {
             Entry::Occupied(mut e) => {
-                e.get_mut().intersect(&state);
+                let read_only = self.read_labels.contains(e.key());
+                e.get_mut().intersect(&state, read_only);
             }
             Entry::Vacant(e) => {
                 e.insert(state);
@@ -396,7 +420,7 @@ impl CasmBuilder {
 
     /// Add a statement to jump to `label`.
     pub fn jump(&mut self, label: String) {
-        let instruction = self.get_instruction(
+        let instruction = self.next_instruction(
             InstructionBody::Jump(JumpInstruction {
                 target: deref_or_immediate!(0),
                 relative: true,
@@ -405,7 +429,7 @@ impl CasmBuilder {
         );
         self.statements.push(Statement::Jump(label.clone(), instruction));
         let mut state = State::default();
-        std::mem::swap(&mut state, &mut self.main_state);
+        core::mem::swap(&mut state, &mut self.main_state);
         self.set_or_test_label_state(label, state);
         self.reachable = false;
     }
@@ -414,7 +438,7 @@ impl CasmBuilder {
     /// `condition` must be a cell reference.
     pub fn jump_nz(&mut self, condition: Var, label: String) {
         let cell = self.as_cell_ref(condition, true);
-        let instruction = self.get_instruction(
+        let instruction = self.next_instruction(
             InstructionBody::Jnz(JnzInstruction {
                 condition: cell,
                 jump_offset: deref_or_immediate!(0),
@@ -430,6 +454,7 @@ impl CasmBuilder {
         if self.reachable {
             self.set_or_test_label_state(name.clone(), self.main_state.clone());
         }
+        self.read_labels.insert(name.clone());
         self.main_state = self
             .label_state
             .get(&name)
@@ -505,7 +530,7 @@ impl CasmBuilder {
             }
         }
 
-        let instruction = self.get_instruction(
+        let instruction = self.next_instruction(
             InstructionBody::Call(CallInstruction {
                 relative: true,
                 target: deref_or_immediate!(0),
@@ -524,7 +549,7 @@ impl CasmBuilder {
     /// A return statement in the code.
     pub fn ret(&mut self) {
         self.main_state.validate_finality();
-        let instruction = self.get_instruction(InstructionBody::Ret(RetInstruction {}), false);
+        let instruction = self.next_instruction(InstructionBody::Ret(RetInstruction {}), false);
         self.statements.push(Statement::Final(instruction));
         self.reachable = false;
     }
@@ -542,7 +567,7 @@ impl CasmBuilder {
     /// Create an assert that would always fail.
     pub fn fail(&mut self) {
         let cell = CellRef { offset: -1, register: Register::FP };
-        let instruction = self.get_instruction(
+        let instruction = self.next_instruction(
             InstructionBody::AssertEq(AssertEqInstruction {
                 a: cell,
                 b: ResOperand::BinOp(BinOpOperand {
@@ -600,9 +625,10 @@ impl CasmBuilder {
         }
     }
 
-    /// Returns an instruction wrapping the instruction body.
+    /// Returns an instruction wrapping the instruction body, and updates the state.
     /// If `inc_ap_supported` may add an `ap++` to the instruction.
-    fn get_instruction(&mut self, body: InstructionBody, inc_ap_supported: bool) -> Instruction {
+    fn next_instruction(&mut self, body: InstructionBody, inc_ap_supported: bool) -> Instruction {
+        assert!(self.reachable, "Cannot add instructions at unreachable code.");
         let inc_ap =
             inc_ap_supported && self.main_state.allocated as usize > self.main_state.ap_change;
         if inc_ap {
@@ -610,7 +636,7 @@ impl CasmBuilder {
         }
         self.main_state.steps += 1;
         let mut hints = vec![];
-        std::mem::swap(&mut hints, &mut self.current_hints);
+        core::mem::swap(&mut hints, &mut self.current_hints);
         Instruction { body, inc_ap, hints }
     }
 }
@@ -619,6 +645,7 @@ impl Default for CasmBuilder {
     fn default() -> Self {
         Self {
             label_state: Default::default(),
+            read_labels: Default::default(),
             main_state: Default::default(),
             statements: Default::default(),
             current_hints: Default::default(),
@@ -778,15 +805,15 @@ macro_rules! casm_build_extend {
         $crate::casm_build_extend!($builder, $($tok)*)
     };
     ($builder:ident, jump $target:ident; $($tok:tt)*) => {
-        $builder.jump(std::stringify!($target).to_owned());
+        $builder.jump($crate::builder::ToOwned::to_owned(core::stringify!($target)));
         $crate::casm_build_extend!($builder, $($tok)*)
     };
     ($builder:ident, jump $target:ident if $condition:ident != 0; $($tok:tt)*) => {
-        $builder.jump_nz($condition, std::stringify!($target).to_owned());
+        $builder.jump_nz($condition, $crate::builder::ToOwned::to_owned(core::stringify!($target)));
         $crate::casm_build_extend!($builder, $($tok)*)
     };
     ($builder:ident, let ($($var_name:ident),*) = call $target:ident; $($tok:tt)*) => {
-        $builder.call(std::stringify!($target).to_owned());
+        $builder.call($crate::builder::ToOwned::to_owned(core::stringify!($target)));
 
         let __var_count = {0i16 $(+ (stringify!($var_name), 1i16).1)*};
         let mut __var_index = 0;
@@ -804,7 +831,7 @@ macro_rules! casm_build_extend {
         $crate::casm_build_extend!($builder, $($tok)*)
     };
     ($builder:ident, $label:ident: $($tok:tt)*) => {
-        $builder.label(std::stringify!($label).to_owned());
+        $builder.label($crate::builder::ToOwned::to_owned(core::stringify!($label)));
         $crate::casm_build_extend!($builder, $($tok)*)
     };
     ($builder:ident, fail; $($tok:tt)*) => {

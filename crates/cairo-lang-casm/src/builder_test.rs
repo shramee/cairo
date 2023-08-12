@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use alloc::format;
+
 use indoc::indoc;
 use itertools::join;
 use pretty_assertions::assert_eq;
@@ -185,6 +188,7 @@ fn test_calculation_loop() {
         tempvar b = one;
         rescope{a = a, b = b, n = n, one = one};
         FIB:
+        #{ steps = 0; }
         tempvar new_n = n - one;
         tempvar new_b = a + b;
         rescope{a = b, b = new_b, n = new_n, one = one};
@@ -225,6 +229,7 @@ fn test_call_ret() {
         assert res_b = fib11;
         jump FT;
         FIB:
+        #{ steps = 0; }
         tempvar new_a = b;
         tempvar new_n = n - one;
         tempvar new_b = a + b;
@@ -275,6 +280,7 @@ fn test_local_fib() {
         tempvar b = one;
         rescope{a = a, b = b, n = n, one = one, res = res};
         FIB:
+        #{ steps = 0; }
         tempvar new_n = n - one;
         tempvar new_b = a + b;
         rescope{a = b, b = new_b, n = new_n, one = one, res = res};
