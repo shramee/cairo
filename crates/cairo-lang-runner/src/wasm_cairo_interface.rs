@@ -72,15 +72,18 @@ pub fn run_with_input_program_string(
         contracts_info,
         if run_profiler { Some(ProfilingInfoCollectionConfig::default()) } else { None },
     )
-    .with_context(|| "Failed setting up runner.")?;
+    // .with_context(|| "Failed setting up runner.")?;
+    .map_err(|err| Error::msg(err.to_string()))?;
+
     let result = runner
         .run_function_with_starknet_context(
-            runner.find_function("::main")?,
+            runner.find_function("::main").map_err(|err| Error::msg(err.to_string()))?,
             &[],
             available_gas,
             StarknetState::default(),
         )
-        .with_context(|| "Failed to run the function.")?;
+        // .with_context(|| "Failed to run the function.")?;
+        .map_err(|err| Error::msg(err.to_string()))?;
     
     /*
     if args.run_profiler {
