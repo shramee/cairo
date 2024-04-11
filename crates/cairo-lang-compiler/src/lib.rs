@@ -21,6 +21,7 @@ use crate::project::{get_main_crate_ids_from_project, setup_project, ProjectConf
 pub mod db;
 pub mod diagnostics;
 pub mod project;
+pub mod wasm_cairo_interface;
 
 /// Configuration for the compiler.
 #[derive(Default)]
