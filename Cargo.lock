@@ -690,6 +690,7 @@ dependencies = [
 name = "cairo-lang-runner"
 version = "2.6.3"
 dependencies = [
+ "anyhow",
  "ark-ff",
  "ark-secp256k1",
  "ark-secp256r1",
@@ -697,6 +698,8 @@ dependencies = [
  "cairo-felt",
  "cairo-lang-casm",
  "cairo-lang-compiler",
+ "cairo-lang-diagnostics",
+ "cairo-lang-filesystem",
  "cairo-lang-lowering",
  "cairo-lang-semantic",
  "cairo-lang-sierra",
@@ -721,6 +724,7 @@ dependencies = [
  "test-case",
  "test-log",
  "thiserror",
+ "thiserror-no-std",
 ]
 
 [[package]]
