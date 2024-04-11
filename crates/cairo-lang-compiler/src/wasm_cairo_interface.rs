@@ -98,9 +98,9 @@ pub fn setup_single_file_project_with_input_string(
             return Err(ProjectError::BadFileExtension);
         }
     }*/
-    if !path.exists() {
+    /*if !path.exists() {
         return Err(ProjectError::NoSuchFile { path: path.to_string_lossy().to_string() });
-    }
+    }*/
     let bad_path_err = || ProjectError::BadPath { path: path.to_string_lossy().to_string() };
     let file_stem = "astro";
     // let file_stem = path.file_stem().and_then(OsStr::to_str).ok_or_else(bad_path_err)?;
