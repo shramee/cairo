@@ -15,6 +15,7 @@ use cairo_lang_sierra_generator::db::SierraGenGroup;
 use cairo_lang_sierra_generator::program_generator::SierraProgramWithDebug;
 use cairo_lang_sierra_generator::replace_ids::{DebugReplacer, SierraIdReplacer};
 use cairo_lang_starknet::contract::get_contracts_info;
+use cairo_lang_runner::wasm_cairo_interface::run_with_input_program_string;
 use clap::Parser;
 
 /// Compiles a Cairo project and runs the function `main`.
@@ -39,13 +40,32 @@ struct Args {
     /// Whether to run the profiler.
     #[arg(long, default_value_t = false)]
     run_profiler: bool,
+    /// Input program string of Cairo code.
+    #[arg(long)]
+    input_program_string: Option<String>,
+
 }
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     // Check if args.path is a file or a directory.
-    check_compiler_path(args.single_file, &args.path)?;
+    // check_compiler_path(args.single_file, &args.path)?;
+
+    // if input_program_string is provided, use it instead of the file.
+    if let Some(input_program_string) = args.input_program_string {
+        let _result = run_with_input_program_string(
+            &input_program_string,
+            args.available_gas,
+            args.allow_warnings,
+            args.print_full_memory,
+            args.run_profiler,
+            false,
+        );
+        // print errors of _result
+        print!("Result:{:?}", _result);
+        return Ok(());
+    }
 
     let mut db_builder = RootDatabase::builder();
     db_builder.detect_corelib();
