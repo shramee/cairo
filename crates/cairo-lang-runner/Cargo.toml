@@ -12,8 +12,9 @@ ark-ff.workspace = true
 ark-secp256k1.workspace = true
 ark-secp256r1.workspace = true
 ark-std.workspace = true
-#cairo-felt.workspace = true
-cairo-felt = { version = "0.9.1", default-features = false }
+cairo-felt.workspace = true
+# Use this when the feature is "alloc"
+#cairo-felt = { version = "0.9.1", default-features = false }
 cairo-lang-casm = { path = "../cairo-lang-casm", version = "~2.6.3" }
 cairo-lang-lowering = { path = "../cairo-lang-lowering", version = "~2.6.3" }
 cairo-lang-sierra = { path = "../cairo-lang-sierra", version = "~2.6.3" }
@@ -27,8 +28,9 @@ cairo-lang-utils = { path = "../cairo-lang-utils", version = "~2.6.3" }
 cairo-lang-filesystem = { path = "../cairo-lang-filesystem", version = "~2.6.3" }
 cairo-lang-compiler = { path = "../cairo-lang-compiler", version = "~2.6.3" }
 cairo-lang-diagnostics = { path = "../cairo-lang-diagnostics", version = "~2.6.3" }
-#cairo-vm.workspace = true
-cairo-vm = { version = "0.9.1", default-features = false }
+cairo-vm.workspace = true
+# Use this when the feature is "alloc"
+# cairo-vm = { version = "0.9.1", default-features = false }
 itertools = { workspace = true, default-features = true }
 keccak.workspace = true
 num-bigint = { workspace = true, default-features = true }

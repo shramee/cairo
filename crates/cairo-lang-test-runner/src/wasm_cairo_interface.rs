@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::vec::IntoIter;
 use anyhow::{bail, Context, Result};
-
+/*
 impl TestRunner {
     /// Configure a new test runner
     ///
@@ -91,3 +91,4 @@ impl TestCompiler {
         )
     }
 }
+ */
