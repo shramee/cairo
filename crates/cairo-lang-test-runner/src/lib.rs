@@ -38,6 +38,7 @@ use itertools::Itertools;
 use num_traits::ToPrimitive;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
+pub mod wasm_cairo_interface;
 #[cfg(test)]
 mod test;
 
