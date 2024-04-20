@@ -62,6 +62,9 @@ struct Args {
     /// Whether to print resource usage after each test.
     #[arg(long, default_value_t = false)]
     print_resource_usage: bool,
+    /// Input program string of Cairo code.
+    #[arg(long)]
+    input_program_string: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
