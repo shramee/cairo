@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use anyhow::Ok;
 use cairo_lang_compiler::project::check_compiler_path;
-use cairo_lang_test_runner::{RunProfilerConfig, TestRunConfig, TestRunner};
+use cairo_lang_test_runner::{RunProfilerConfig, TestRunConfig, TestRunner, wasm_cairo_interface};
 use clap::{Parser, ValueEnum};
 use serde::Serialize;
 
@@ -71,7 +71,7 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     // Check if args.path is a file or a directory.
-    check_compiler_path(args.single_file, &args.path)?;
+    // check_compiler_path(args.single_file, &args.path)?;
 
     let config = TestRunConfig {
         filter: args.filter,
@@ -81,6 +81,15 @@ fn main() -> anyhow::Result<()> {
         gas_enabled: !args.gas_disabled,
         print_resource_usage: args.print_resource_usage,
     };
+
+    // if input_program_string is provided, use it instead of the file.
+    if let Some(input_program_string) = args.input_program_string {
+        let runner = TestRunner::new_with_string(&input_program_string, &args.path, args.starknet, args.allow_warnings, config)?;
+        runner.run()?;
+        // print errors of _result
+        // print!("Result:{:?}", _result);
+        return Ok(());
+    }
 
     let runner = TestRunner::new(&args.path, args.starknet, args.allow_warnings, config)?;
     runner.run()?;
