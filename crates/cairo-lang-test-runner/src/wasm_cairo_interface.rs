@@ -1,13 +1,22 @@
-#[cfg(not(feature = "alloc"))]
-use std::collections::HashMap;
-#[cfg(feature = "alloc")]
-use cairo_vm::without_std::collections::HashMap;
-
 use std::path::Path;
-use std::sync::{Arc, Mutex};
-use std::vec::IntoIter;
+use std::sync::Arc;
+
 use anyhow::{bail, Context, Result};
-/*
+
+use cairo_lang_compiler::db::RootDatabase;
+use cairo_lang_compiler::diagnostics::DiagnosticsReporter;
+use cairo_lang_compiler::wasm_cairo_interface::setup_project_with_input_string;
+use cairo_lang_filesystem::cfg::{Cfg, CfgSet};
+use cairo_lang_filesystem::db::FilesGroupEx;
+use cairo_lang_filesystem::flag::Flag;
+use cairo_lang_filesystem::ids::{CrateId, FlagId};
+
+use cairo_lang_starknet::starknet_plugin_suite;
+use cairo_lang_test_plugin::test_plugin_suite;
+
+use crate::{TestCompiler, TestRunConfig, TestRunner};
+
+
 impl TestRunner {
     /// Configure a new test runner
     ///
@@ -18,20 +27,15 @@ impl TestRunner {
     /// * `include_ignored` - Include ignored tests as well
     /// * `ignored` - Run ignored tests only
     /// * `starknet` - Add the starknet plugin to run the tests
-    pub fn new(
+    pub fn new_with_string(
+        input_program_string: &String,
         path: &Path,
         starknet: bool,
         allow_warnings: bool,
         config: TestRunConfig,
     ) -> Result<Self> {
-        let compiler = TestCompiler::try_new(path, starknet, allow_warnings, config.gas_enabled)?;
+        let compiler = TestCompiler::try_new_with_string(input_program_string, path, starknet, allow_warnings, config.gas_enabled)?;
         Ok(Self { compiler, config })
-    }
-
-    /// Runs the tests and process the results for a summary.
-    pub fn run(&self) -> Result<Option<TestsSummary>> {
-        let runner = CompiledTestRunner::new(self.compiler.build()?, self.config.clone());
-        runner.run(Some(&self.compiler.db))
     }
 }
 
@@ -42,7 +46,8 @@ impl TestCompiler {
     ///
     /// * `path` - The path to compile and run its tests
     /// * `starknet` - Add the starknet plugin to run the tests
-    pub fn try_new(
+    pub fn try_new_with_string(
+        input_program_string: &String,
         path: &Path,
         starknet: bool,
         allow_warnings: bool,
@@ -64,7 +69,7 @@ impl TestCompiler {
         let add_redeposit_gas_flag_id = FlagId::new(db, "add_redeposit_gas");
         db.set_flag(add_redeposit_gas_flag_id, Some(Arc::new(Flag::AddRedepositGas(true))));
 
-        let main_crate_ids = setup_project(db, Path::new(&path))?;
+        let main_crate_ids = setup_project_with_input_string(db, Path::new(&path), input_program_string)?;
         let mut reporter = DiagnosticsReporter::stderr().with_crates(&main_crate_ids);
         if allow_warnings {
             reporter = reporter.allow_warnings();
@@ -80,15 +85,4 @@ impl TestCompiler {
             starknet,
         })
     }
-
-    /// Build the tests and collect metadata.
-    pub fn build(&self) -> Result<TestCompilation> {
-        compile_test_prepared_db(
-            &self.db,
-            self.starknet,
-            self.main_crate_ids.clone(),
-            self.test_crate_ids.clone(),
-        )
-    }
 }
- */

@@ -54,39 +54,6 @@ pub fn setup_project_with_input_string(
 
 /// Setup to 'db' to compile the file at the given path.
 /// Returns the id of the generated crate.
-fn setup_single_file_project_with_input_string_old(
-    db: &mut dyn SemanticGroup,
-    path: &Path,
-    input: &String,
-) -> Result<CrateId, ProjectError> {
-    let file_stem = "astro";
-
-    // If file_stem is not lib, create a fake lib file.
-    let crate_id = db.intern_crate(CrateLongId::Real(file_stem.into()));
-    db.set_crate_config(
-        crate_id,
-        Some(CrateConfiguration::default_for_root(Directory::Real(
-            path.parent().unwrap().to_path_buf(),
-        ))),
-    );
-
-    let module_id = ModuleId::CrateRoot(crate_id);
-    let file_id = db.module_main_file(module_id).unwrap();
-    db.as_files_group_mut()
-        .override_file_content(file_id, Some(Arc::new(format!("mod {file_stem};"))));
-
-    // Creat file from input string.
-    let item_id =
-        extract_matches!(db.module_items(module_id).ok().unwrap()[0], ModuleItemId::Submodule);
-    let submodule_id = ModuleId::Submodule(item_id);
-    let sub_file_id = db.module_main_file(submodule_id).unwrap();
-    db.as_files_group_mut().override_file_content(sub_file_id, Some(Arc::new(input.clone())));
-
-    Ok(crate_id)
-}
-
-/// Setup to 'db' to compile the file at the given path.
-/// Returns the id of the generated crate.
 pub fn setup_single_file_project_with_input_string(
     db: &mut dyn SemanticGroup,
     path: &Path,
