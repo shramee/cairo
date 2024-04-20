@@ -1,9 +1,14 @@
+#[cfg(not(feature = "alloc"))]
 use std::collections::HashMap;
+
+#[cfg(feature = "alloc")]
+use cairo_vm::without_std::collections::HashMap;
+
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::vec::IntoIter;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Error, Context, Result};
 use cairo_felt::Felt252;
 use cairo_lang_compiler::db::RootDatabase;
 use cairo_lang_compiler::diagnostics::DiagnosticsReporter;
@@ -337,7 +342,8 @@ pub fn run_tests(
             }
         },
     )
-    .with_context(|| "Failed setting up runner.")?;
+    //.with_context(|| "Failed setting up runner.")?;
+    .map_err(|err| Error::msg(err.to_string()))?;
     let suffix = if named_tests.len() != 1 { "s" } else { "" };
     println!("running {} test{}", named_tests.len(), suffix);
     let wrapped_summary = Mutex::new(Ok(TestsSummary {
@@ -397,10 +403,12 @@ fn run_single_test(
     if test.ignored {
         return Ok((name, None));
     }
-    let func = runner.find_function(name.as_str())?;
+    // let func = runner.find_function(name.as_str())?;
+    let func = runner.find_function(name.as_str()).map_err(|err| Error::msg(err.to_string()))?;
     let result = runner
         .run_function_with_starknet_context(func, &[], test.available_gas, Default::default())
-        .with_context(|| format!("Failed to run the function `{}`.", name.as_str()))?;
+        // .with_context(|| format!("Failed to run the function `{}`.", name.as_str()))?;
+        .map_err(|err| Error::msg(err.to_string()))?;
     Ok((
         name,
         Some(TestResult {
