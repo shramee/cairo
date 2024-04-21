@@ -138,13 +138,18 @@ pub fn run_tests_with_input_string_parsed(
     gas_disabled: bool,
     print_resource_usage: bool,
 ) -> Result<String> {
-    let result = run_tests_with_input_string(&input_program_string, allow_warnings, filter, include_ignored, ignored, starknet, String::new(), gas_disabled, print_resource_usage)?;
+    let result = run_tests_with_input_string(&input_program_string, allow_warnings, filter, include_ignored, ignored, starknet, String::new(), gas_disabled, print_resource_usage);
     match result {
-        Some(summary) => {
-            Ok(LogDatabase::get_file_text("test_log_file".to_string()))
-        }
-        None => {
-            Err(anyhow::anyhow!("No tests found"))
-        }
+        Ok( Some(tests_summary) ) => {
+            println!("Test result passed: {:?}", tests_summary.passed);
+            println!("Test result failed: {:?}", tests_summary.failed);
+            println!("Test result ignored: {:?}", tests_summary.ignored);
+            return Ok(LogDatabase::get_file_text("test_log_file".to_string()));
+        },
+        Ok( None ) => {
+            println!("No test result found");
+            return Ok(LogDatabase::get_file_text("test_log_file".to_string()));
+        },
+        Err(e) => Err(e)
     }
 }
