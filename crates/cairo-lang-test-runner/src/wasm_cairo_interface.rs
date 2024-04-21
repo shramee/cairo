@@ -147,7 +147,7 @@ pub fn run_tests_with_input_string_parsed(
             return Ok(LogDatabase::get_file_text("test_log_file".to_string()));
         },
         Ok( None ) => {
-            println!("No test result found");
+            println!("No tests summary found.");
             return Ok(LogDatabase::get_file_text("test_log_file".to_string()));
         },
         Err(e) => Err(e)
