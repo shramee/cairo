@@ -1,4 +1,5 @@
-use std::path::{self, Path};
+use std::f64::consts::E;
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
@@ -10,6 +11,7 @@ use cairo_lang_filesystem::cfg::{Cfg, CfgSet};
 use cairo_lang_filesystem::db::FilesGroupEx;
 use cairo_lang_filesystem::flag::Flag;
 use cairo_lang_filesystem::ids::FlagId;
+use cairo_lang_filesystem::log_db::LogDatabase;
 
 use cairo_lang_starknet::starknet_plugin_suite;
 use cairo_lang_test_plugin::test_plugin_suite;
@@ -123,4 +125,26 @@ pub fn run_tests_with_input_string(
     )?;
     let result = runner.run();
     result
+}
+
+pub fn run_tests_with_input_string_parsed(
+    input_program_string: &String,
+    allow_warnings: bool,
+    filter: String,
+    include_ignored: bool,
+    ignored: bool,
+    starknet: bool,
+    run_profiler: String,
+    gas_disabled: bool,
+    print_resource_usage: bool,
+) -> Result<String> {
+    let result = run_tests_with_input_string(&input_program_string, allow_warnings, filter, include_ignored, ignored, starknet, String::new(), gas_disabled, print_resource_usage)?;
+    match result {
+        Some(summary) => {
+            Ok(LogDatabase::get_file_text("test_log_file".to_string()))
+        }
+        None => {
+            Err(anyhow::anyhow!("No tests found"))
+        }
+    }
 }
