@@ -94,15 +94,15 @@ impl TestCompiler {
 }
 
 pub fn run_tests_with_input_string(
+    input_program_string: &String,
+    allow_warnings: bool,
     filter: String,
-    ignored: bool,
     include_ignored: bool,
+    ignored: bool,
     starknet: bool,
     run_profiler: String,
     gas_disabled: bool,
     print_resource_usage: bool,
-    input_program_string: &String,
-    allow_warnings: bool,
 ) -> Result<Option<TestsSummary>> {
     let path = Path::new("astro");
     let config = TestRunConfig {
