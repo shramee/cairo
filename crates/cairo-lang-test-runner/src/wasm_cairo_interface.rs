@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{self, Path};
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
@@ -14,8 +14,7 @@ use cairo_lang_filesystem::ids::FlagId;
 use cairo_lang_starknet::starknet_plugin_suite;
 use cairo_lang_test_plugin::test_plugin_suite;
 
-use crate::{TestCompiler, TestRunConfig, TestRunner};
-
+use crate::{RunProfilerConfig, TestCompiler, TestRunConfig, TestRunner, TestsSummary};
 
 impl TestRunner {
     /// Configure a new test runner
@@ -34,7 +33,13 @@ impl TestRunner {
         allow_warnings: bool,
         config: TestRunConfig,
     ) -> Result<Self> {
-        let compiler = TestCompiler::try_new_with_string(input_program_string, path, starknet, allow_warnings, config.gas_enabled)?;
+        let compiler = TestCompiler::try_new_with_string(
+            input_program_string,
+            path,
+            starknet,
+            allow_warnings,
+            config.gas_enabled,
+        )?;
         Ok(Self { compiler, config })
     }
 }
@@ -69,7 +74,8 @@ impl TestCompiler {
         let add_redeposit_gas_flag_id = FlagId::new(db, "add_redeposit_gas");
         db.set_flag(add_redeposit_gas_flag_id, Some(Arc::new(Flag::AddRedepositGas(true))));
 
-        let main_crate_ids = setup_project_with_input_string(db, Path::new(&path), input_program_string)?;
+        let main_crate_ids =
+            setup_project_with_input_string(db, Path::new(&path), input_program_string)?;
         let mut reporter = DiagnosticsReporter::stderr().with_crates(&main_crate_ids);
         if allow_warnings {
             reporter = reporter.allow_warnings();
@@ -85,4 +91,36 @@ impl TestCompiler {
             starknet,
         })
     }
+}
+
+pub fn run_tests_with_input_string(
+    filter: String,
+    ignored: bool,
+    include_ignored: bool,
+    starknet: bool,
+    run_profiler: String,
+    gas_disabled: bool,
+    print_resource_usage: bool,
+    input_program_string: &String,
+    allow_warnings: bool,
+) -> Result<Option<TestsSummary>> {
+    let path = Path::new("astro");
+    let config = TestRunConfig {
+        filter,
+        ignored,
+        include_ignored,
+        run_profiler: RunProfilerConfig::None, // TODO: parse run_profiler
+        gas_enabled: !gas_disabled,
+        print_resource_usage,
+    };
+
+    let runner = TestRunner::new_with_string(
+        &input_program_string,
+        path,
+        starknet,
+        allow_warnings,
+        config,
+    )?;
+    let result = runner.run();
+    result
 }
